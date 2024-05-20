@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -14,6 +13,11 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/authprovider"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
@@ -21,11 +25,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
@@ -46,36 +45,11 @@ var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 // New creates a new [Postgres] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
-	if cfg.Username != "" || cfg.Password != "" {
-		parsed, err := url.Parse(uri)
-		if err != nil {
-			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
-		}
-
-		username := ""
-		if cfg.Username != "" {
-			username = cfg.Username
-		} else if parsed.User != nil {
-			username = parsed.User.Username()
-		}
-
-		switch {
-		case cfg.Password != "":
-			parsed.User = url.UserPassword(username, cfg.Password)
-		case parsed.User != nil:
-			if password, ok := parsed.User.Password(); ok {
-				parsed.User = url.UserPassword(username, password)
-			} else {
-				parsed.User = url.User(username)
-			}
-		default:
-			parsed.User = url.User(username)
-		}
-
-		uri = parsed.String()
+	dbAuthProvider, err := authprovider.New(cfg.AuthMethod)
+	if err != nil {
+		return nil, fmt.Errorf("initialize auth provider: %w", err)
 	}
-
-	db, err := sql.Open("pgx", uri)
+	db, err := dbAuthProvider.NewPosgreSQL(uri, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}

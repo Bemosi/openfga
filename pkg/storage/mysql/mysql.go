@@ -11,7 +11,6 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-sql-driver/mysql"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/authprovider"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
@@ -45,27 +45,14 @@ var _ storage.OpenFGADatastore = (*MySQL)(nil)
 
 // New creates a new [MySQL] storage.
 func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
-	if cfg.Username != "" || cfg.Password != "" {
-		dsnCfg, err := mysql.ParseDSN(uri)
-		if err != nil {
-			return nil, fmt.Errorf("parse mysql connection dsn: %w", err)
-		}
-
-		if cfg.Username != "" {
-			dsnCfg.User = cfg.Username
-		}
-		if cfg.Password != "" {
-			dsnCfg.Passwd = cfg.Password
-		}
-
-		uri = dsnCfg.FormatDSN()
+	dbAuthProvider, err := authprovider.New(cfg.AuthMethod)
+	if err != nil {
+		return nil, fmt.Errorf("initialize auth provider: %w", err)
 	}
-
-	db, err := sql.Open("mysql", uri)
+	db, err := dbAuthProvider.NewMySQL(uri, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
-
 	if cfg.MaxOpenConns != 0 {
 		db.SetMaxOpenConns(cfg.MaxOpenConns)
 	}

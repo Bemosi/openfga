@@ -26,6 +26,8 @@ import (
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
 type Config struct {
+	// AuthMethod is the underlying authentication methods with the storage (e.g. 'password', 'azure_managed_identity')
+	AuthMethod             string
 	Username               string
 	Password               string
 	Logger                 logger.Logger

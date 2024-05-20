@@ -25,6 +25,7 @@ services:
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
       - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
+      - OPENFGA_DATASTORE_AUTHMETHOD=azure_managed_identity
     command: migrate
     networks:
       - default
